@@ -33,6 +33,7 @@
   header{position:sticky; top:0; z-index:50; background:var(--accent); color:#fff;
     padding:12px 16px; display:flex; align-items:center; justify-content:space-between; box-shadow:0 2px 6px rgba(0,0,0,.12);}
   header h1{font-size:17px; margin:0; font-weight:700;}
+  header .hbtns{display:flex; gap:8px;}
   header .gear{background:rgba(255,255,255,.18); border:none; color:#fff; width:38px; height:38px;
     border-radius:10px; font-size:18px; cursor:pointer;}
   .wrap{max-width:760px; margin:0 auto; padding:14px;}
@@ -105,12 +106,33 @@
   .ov-note{font-size:12px; color:var(--warn); margin-top:6px;}
   .export-row{display:flex; gap:8px; margin-top:14px;}
   .export-row button{flex:1; padding:10px; font-size:13px; border-radius:9px; border:1px solid var(--line); background:#f8fafc; cursor:pointer;}
+
+  /* 日付計算 */
+  .calc-label{font-size:13px; color:var(--sub); font-weight:600; margin:14px 2px 7px;}
+  .calc-base{display:flex; gap:8px; align-items:center;}
+  .calc-base input[type=date]{flex:1; height:42px; border:1px solid var(--line); border-radius:10px; padding:0 10px; font-size:16px; color:var(--ink); background:#fff;}
+  .calc-base button{height:42px; padding:0 14px; border:1px solid var(--line); border-radius:10px; background:#f1f5f9; font-size:14px; cursor:pointer; white-space:nowrap;}
+  .chips{display:flex; flex-wrap:wrap; gap:8px;}
+  .chip{padding:9px 13px; border:1px solid var(--line); border-radius:20px; background:#fff; font-size:14px; cursor:pointer; color:var(--accent-d);}
+  .chip:active{background:#eef6fb;}
+  .free{display:flex; align-items:center; gap:10px; flex-wrap:wrap;}
+  .unit-toggle{display:flex; border:1px solid var(--line); border-radius:10px; overflow:hidden;}
+  .unit-toggle button{padding:0 16px; height:40px; border:none; background:#f8fafc; font-size:15px; cursor:pointer; color:var(--sub);}
+  .unit-toggle button.on{background:var(--accent); color:#fff; font-weight:700;}
+  .calc-result{margin-top:18px; padding:16px; border-radius:14px; background:#eef6fb; border:1px solid #cfe3f0; text-align:center;}
+  .calc-result .big{font-size:24px; font-weight:800; color:var(--accent-d); line-height:1.3;}
+  .calc-result .meta{font-size:14px; margin-top:6px; font-weight:600;}
+  .calc-result .meta.open{color:var(--ok);} .calc-result .meta.closed{color:var(--off);}
+  .calc-result .offset{font-size:12px; color:var(--sub); margin-top:4px;}
 </style>
 </head>
 <body>
 <header>
   <h1>📅 予約管理</h1>
-  <button class="gear" onclick="openSettings()" title="設定">⚙️</button>
+  <div class="hbtns">
+    <button class="gear" onclick="openDateCalc()" title="日付計算">📆</button>
+    <button class="gear" onclick="openSettings()" title="設定">⚙️</button>
+  </div>
 </header>
 
 <div class="wrap">
@@ -164,6 +186,44 @@
     </div>
     <input type="file" id="importFile" accept="application/json" style="display:none" onchange="importData(event)">
     <div class="hint">別の端末へ移すときは書き出し→読み込みで共有できます（自動同期ではありません）。</div>
+  </div>
+</div>
+
+<!-- 日付計算シート -->
+<div class="overlay" id="calcOverlay" onclick="if(event.target===this)closeDateCalc()">
+  <div class="sheet">
+    <h3>📆 日付計算</h3>
+    <div class="sub">起点日から「◯日後／◯週後」の日付を割り出します（次回予約の目安に）。</div>
+
+    <div class="calc-label">起点日</div>
+    <div class="calc-base">
+      <input type="date" id="calcBase" onchange="computeCalc()">
+      <button type="button" onclick="setCalcToday()">今日</button>
+    </div>
+
+    <div class="calc-label">クイック</div>
+    <div class="chips" id="calcChips"></div>
+
+    <div class="calc-label">自由入力</div>
+    <div class="free">
+      <div class="stepper">
+        <button type="button" onclick="stepCalc(-1)">−</button>
+        <input id="calcN" type="number" min="0" value="2" inputmode="numeric" pattern="[0-9]*"
+               onfocus="this.select()" oninput="computeCalc()">
+        <button type="button" onclick="stepCalc(1)">＋</button>
+      </div>
+      <div class="unit-toggle">
+        <button type="button" id="unitD" onclick="setUnit('d')">日後</button>
+        <button type="button" id="unitW" onclick="setUnit('w')">週後</button>
+      </div>
+    </div>
+
+    <div class="calc-result" id="calcResult"></div>
+
+    <div class="btns">
+      <button class="btn btn-ghost" onclick="closeDateCalc()">閉じる</button>
+      <button class="btn btn-primary" id="calcOpenBtn" onclick="openCalcResultDay()">その日を予約入力</button>
+    </div>
   </div>
 </div>
 
@@ -432,6 +492,75 @@ function importData(ev){
   };
   rd.readAsText(f);
   ev.target.value='';
+}
+
+/* ========= 日付計算 ========= */
+const CALC_PRESETS = [
+  {n:3,  u:'d'}, {n:1, u:'w'}, {n:10, u:'d'}, {n:2, u:'w'},
+  {n:3,  u:'w'}, {n:4, u:'w'}, {n:6,  u:'w'}, {n:8, u:'w'}, {n:12, u:'w'}
+];
+let calcUnit='w';
+let calcResultYmd=null;
+
+function addDays(ds, days){ const d=new Date(ds+'T00:00:00'); d.setDate(d.getDate()+days); return d; }
+function fmtLong(d){ return `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日（${DOW[d.getDay()]}）`; }
+
+function openDateCalc(){
+  document.getElementById('calcBase').value = todayYmd();
+  document.getElementById('calcN').value = 2;
+  setUnit('w', true);              // 既定は「週後」
+  // クイックチップ生成
+  const wrap=document.getElementById('calcChips'); wrap.innerHTML='';
+  CALC_PRESETS.forEach(p=>{
+    const b=document.createElement('button');
+    b.className='chip'; b.type='button';
+    b.textContent = p.u==='w' ? `${p.n}週後` : `${p.n}日後`;
+    b.onclick=()=>{ document.getElementById('calcN').value=p.n; setUnit(p.u,true); computeCalc(); };
+    wrap.appendChild(b);
+  });
+  computeCalc();
+  document.getElementById('calcOverlay').classList.add('show');
+}
+function closeDateCalc(){ document.getElementById('calcOverlay').classList.remove('show'); }
+function setCalcToday(){ document.getElementById('calcBase').value=todayYmd(); computeCalc(); }
+function stepCalc(delta){
+  const el=document.getElementById('calcN'); let v=parseInt(el.value||'0',10)+delta;
+  if(v<0)v=0; el.value=v; computeCalc();
+}
+function setUnit(u, skipCompute){
+  calcUnit=u;
+  document.getElementById('unitD').classList.toggle('on', u==='d');
+  document.getElementById('unitW').classList.toggle('on', u==='w');
+  if(!skipCompute) computeCalc();
+}
+function computeCalc(){
+  const base=document.getElementById('calcBase').value || todayYmd();
+  const n=Math.max(0, parseInt(document.getElementById('calcN').value||'0',10));
+  const offDays = calcUnit==='w' ? n*7 : n;
+  const d=addDays(base, offDays);
+  const ds=ymd(d); calcResultYmd=ds;
+  const dow=d.getDay();
+  const c=capacityFor(ds,dow), r=reservedFor(ds);
+
+  // 診療状況
+  let metaHtml, metaCls;
+  if(c.am<=0 && c.pm<=0){ metaHtml='休診日'; metaCls='closed'; }
+  else {
+    const parts=[];
+    if(c.am>0) parts.push(`午前 空き${Math.max(0,c.am-r.am)}`);
+    if(c.pm>0) parts.push(`午後 空き${Math.max(0,c.pm-r.pm)}`);
+    metaHtml=parts.join(' ／ '); metaCls='open';
+  }
+  const unitLabel = calcUnit==='w' ? `${n}週後（${offDays}日後）` : `${n}日後`;
+  document.getElementById('calcResult').innerHTML =
+    `<div class="big">${fmtLong(d)}</div>`+
+    `<div class="meta ${metaCls}">${metaHtml}</div>`+
+    `<div class="offset">${base} の ${unitLabel}</div>`;
+}
+function openCalcResultDay(){
+  if(!calcResultYmd) return;
+  closeDateCalc();
+  openDay(calcResultYmd);
 }
 
 /* ========= 起動 ========= */
