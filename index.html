@@ -81,9 +81,11 @@
   .stepper button{width:40px; height:40px; border:1px solid var(--line); background:#f8fafc; font-size:22px; cursor:pointer; color:var(--accent-d);}
   .stepper button:first-child{border-radius:10px 0 0 10px;}
   .stepper button:last-child{border-radius:0 10px 10px 0;}
-  .stepper input{width:58px; height:40px; text-align:center; border:1px solid var(--line); border-left:none; border-right:none;
-    font-size:17px; font-weight:700; -moz-appearance:textfield;}
+  .stepper input{width:72px; height:40px; text-align:center; border:1px solid var(--line); border-left:none; border-right:none;
+    font-size:18px; font-weight:700; -moz-appearance:textfield; cursor:text; background:#fff; color:var(--ink);}
+  .stepper input:focus{outline:none; background:#eef6fb; box-shadow:inset 0 0 0 2px var(--accent);}
   .stepper input::-webkit-outer-spin-button,.stepper input::-webkit-inner-spin-button{-webkit-appearance:none;}
+  .inputhint{font-size:13px; color:var(--sub); margin:0 2px 14px; padding:8px 10px; background:#f1f5f9; border-radius:8px;}
   .avail{font-size:13px; font-weight:600; margin-top:2px;}
   .btns{display:flex; gap:10px; margin-top:6px;}
   .btn{flex:1; padding:13px; border:none; border-radius:11px; font-size:15px; font-weight:600; cursor:pointer;}
@@ -293,6 +295,7 @@ function buildSlots(r, c, closed){
   const area=document.getElementById('slotsArea');
   area.style.display = closed ? 'none':'block';
   area.innerHTML = `
+    <div class="inputhint">数字をタップすると直接入力できます（＋ −でも調整できます）</div>
     ${slotEditor('午前','am', r.am, c.am)}
     ${slotEditor('午後','pm', r.pm, c.pm)}
   `;
@@ -304,17 +307,19 @@ function slotEditor(label, key, reserved, cap){
     <div class="row">
       <label>予約人数</label>
       <div class="stepper">
-        <button onclick="step('${key}',-1)">−</button>
-        <input id="res_${key}" type="number" min="0" value="${reserved}" inputmode="numeric" onchange="updateAvail('${key}')">
-        <button onclick="step('${key}',1)">＋</button>
+        <button type="button" onclick="step('${key}',-1)">−</button>
+        <input id="res_${key}" type="number" min="0" value="${reserved}" inputmode="numeric" pattern="[0-9]*"
+               onfocus="this.select()" oninput="updateAvail('${key}')" onchange="updateAvail('${key}')">
+        <button type="button" onclick="step('${key}',1)">＋</button>
       </div>
     </div>
     <div class="row">
       <label>定員（この日）</label>
       <div class="stepper">
-        <button onclick="step('cap_${key}',-1)">−</button>
-        <input id="cap_${key}" type="number" min="0" value="${cap}" inputmode="numeric" onchange="updateAvail('${key}')">
-        <button onclick="step('cap_${key}',1)">＋</button>
+        <button type="button" onclick="step('cap_${key}',-1)">−</button>
+        <input id="cap_${key}" type="number" min="0" value="${cap}" inputmode="numeric" pattern="[0-9]*"
+               onfocus="this.select()" oninput="updateAvail('${key}')" onchange="updateAvail('${key}')">
+        <button type="button" onclick="step('cap_${key}',1)">＋</button>
       </div>
     </div>
     <div class="avail" id="avail_${key}"></div>
