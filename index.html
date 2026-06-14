@@ -227,12 +227,15 @@ function slotMarkup(label, reserved, cap){
   return `<div class="slot ${slotClass(reserved,cap)}"><span>${label}</span><b>${reserved}/${cap}</b></div>`;
 }
 
+let lastRenderedDay = ''; // 最後に描画した日付。日付が変わったら自動で3ヶ月分を組み直す
+
 function renderMonths(){
   const host = document.getElementById('months');
   host.innerHTML='';
   const now = new Date();
   const startMonth = new Date(now.getFullYear(), now.getMonth(), 1);
   const today = todayYmd();
+  lastRenderedDay = today; // この描画時点の「今日」を記録（日付が変わったら自動再描画する）
   // 本日を起点に「今日〜3ヶ月先」までをカバーする月数を算出（月初固定でなく常に今日基準）
   const endDate = new Date(now.getFullYear(), now.getMonth()+3, now.getDate());
   const monthCount = (endDate.getFullYear()-startMonth.getFullYear())*12
@@ -433,6 +436,19 @@ function importData(ev){
 
 /* ========= 起動 ========= */
 renderMonths();
+
+// 日付が変わったら自動で3ヶ月分を組み直す（開きっぱなし／常駐でも常に最新）
+function refreshIfDayChanged(){
+  if(document.visibilityState==='visible' && todayYmd()!==lastRenderedDay){
+    renderMonths();
+  }
+}
+// アプリを前面に戻した時・ウィンドウにフォーカスした時に判定
+document.addEventListener('visibilitychange', refreshIfDayChanged);
+window.addEventListener('focus', refreshIfDayChanged);
+window.addEventListener('pageshow', refreshIfDayChanged);
+// 念のため日付境界をまたいでも気づけるよう、開いている間は1分ごとにも確認
+setInterval(refreshIfDayChanged, 60*1000);
 </script>
 </body>
 </html>
