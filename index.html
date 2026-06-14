@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>予約管理</title>
+
+<!-- ===== PWA設定（ホーム画面アイコン対応） ===== -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#1a6b9a">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="icon" type="image/png" sizes="512x512" href="icon-512.png">
+
+<!-- iOS Safari 用 -->
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="予約管理">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+
+<!-- 検索エンジン除外（院内向け非公開ツール） -->
+<meta name="robots" content="noindex, nofollow, noarchive">
+<style>
+  :root{
+    --bg:#f4f6f8; --card:#fff; --ink:#1f2d3d; --sub:#64748b; --line:#e2e8f0;
+    --accent:#1a6b9a; --accent-d:#145270;
+    --ok:#16a34a; --okbg:#dcfce7; --warn:#d97706; --warnbg:#fef3c7;
+    --full:#dc2626; --fullbg:#fee2e2; --off:#94a3b8; --offbg:#f1f5f9;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif;
+    background:var(--bg); color:var(--ink); font-size:17px; line-height:1.5; padding-bottom:80px;}
+  header{position:sticky; top:0; z-index:50; background:var(--accent); color:#fff;
+    padding:12px 16px; display:flex; align-items:center; justify-content:space-between; box-shadow:0 2px 6px rgba(0,0,0,.12);}
+  header h1{font-size:17px; margin:0; font-weight:700;}
+  header .gear{background:rgba(255,255,255,.18); border:none; color:#fff; width:38px; height:38px;
+    border-radius:10px; font-size:18px; cursor:pointer;}
+  .wrap{max-width:760px; margin:0 auto; padding:14px;}
+
+  /* legend */
+  .legend{display:flex; flex-wrap:wrap; gap:6px 14px; font-size:13px; color:var(--sub); margin:4px 2px 14px;}
+  .legend span{display:inline-flex; align-items:center; gap:5px;}
+  .dot{width:12px; height:12px; border-radius:3px; display:inline-block;}
+
+  /* month */
+  .month{background:var(--card); border-radius:14px; box-shadow:0 1px 3px rgba(0,0,0,.06); margin-bottom:18px; overflow:hidden;}
+  .month h2{margin:0; padding:12px 16px; font-size:18px; background:#fff; border-bottom:1px solid var(--line);
+    display:flex; justify-content:space-between; align-items:baseline; flex-wrap:wrap; gap:2px 8px;}
+  .month h2 small{font-size:13px; color:var(--sub); font-weight:400;}
+  .grid{display:grid; grid-template-columns:repeat(7,1fr); gap:1px; background:var(--line);}
+  .dow{text-align:center; font-size:13px; padding:7px 0; font-weight:700; color:#fff;
+    background:#4a6572;}                                /* 平日: 濃いスレート（白文字） */
+  .dow.sun{background:#c0392b;}                         /* 日: 濃い赤 */
+  .dow.sat{background:#1f5fc0;}                         /* 土: 濃い青 */
+  .cell{background:#fff; min-height:74px; padding:5px 4px 6px; cursor:pointer; position:relative; display:flex; flex-direction:column; gap:4px;}
+  .cell.empty{background:#fafbfc; cursor:default;}
+  .cell.today{outline:2px solid var(--accent); outline-offset:-2px; z-index:1;}
+  .cell.past{opacity:.5;}
+  .cell .dnum{font-size:14px; font-weight:700; line-height:1;}
+  .cell.sun .dnum{color:#dc2626;} .cell.sat .dnum{color:#2563eb;}
+  .slot{font-size:12px; line-height:1.3; border-radius:4px; padding:2px 4px; display:flex; justify-content:space-between; gap:3px;}
+  .slot b{font-weight:700;}
+  .s-ok{background:var(--okbg); color:#166534;}
+  .s-warn{background:var(--warnbg); color:#92400e;}
+  .s-full{background:var(--fullbg); color:#991b1b;}
+  .s-off{background:var(--offbg); color:#64748b;}
+  .s-none{color:#cbd5e1;}
+
+  /* modal */
+  .overlay{position:fixed; inset:0; background:rgba(15,23,42,.45); display:none; align-items:flex-end; justify-content:center; z-index:100;}
+  .overlay.show{display:flex;}
+  .sheet{background:#fff; width:100%; max-width:560px; border-radius:18px 18px 0 0; padding:18px 18px 26px; max-height:90vh; overflow:auto; animation:up .22s ease;}
+  @keyframes up{from{transform:translateY(40px); opacity:.4;} to{transform:none; opacity:1;}}
+  .sheet h3{margin:0 0 2px; font-size:18px;}
+  .sheet .sub{color:var(--sub); font-size:13px; margin-bottom:16px;}
+  .slotbox{border:1px solid var(--line); border-radius:12px; padding:14px; margin-bottom:14px;}
+  .slotbox h4{margin:0 0 10px; font-size:15px; display:flex; align-items:center; gap:8px;}
+  .row{display:flex; align-items:center; justify-content:space-between; margin-bottom:9px; gap:10px;}
+  .row label{color:var(--sub); font-size:13px;}
+  .stepper{display:flex; align-items:center; gap:0;}
+  .stepper button{width:40px; height:40px; border:1px solid var(--line); background:#f8fafc; font-size:22px; cursor:pointer; color:var(--accent-d);}
+  .stepper button:first-child{border-radius:10px 0 0 10px;}
+  .stepper button:last-child{border-radius:0 10px 10px 0;}
+  .stepper input{width:58px; height:40px; text-align:center; border:1px solid var(--line); border-left:none; border-right:none;
+    font-size:17px; font-weight:700; -moz-appearance:textfield;}
+  .stepper input::-webkit-outer-spin-button,.stepper input::-webkit-inner-spin-button{-webkit-appearance:none;}
+  .avail{font-size:13px; font-weight:600; margin-top:2px;}
+  .btns{display:flex; gap:10px; margin-top:6px;}
+  .btn{flex:1; padding:13px; border:none; border-radius:11px; font-size:15px; font-weight:600; cursor:pointer;}
+  .btn-primary{background:var(--accent); color:#fff;}
+  .btn-ghost{background:#eef2f6; color:var(--ink);}
+  .btn-danger{background:var(--fullbg); color:var(--full);}
+  .closed-toggle{display:flex; align-items:center; gap:8px; font-size:13px; color:var(--sub); margin:2px 0 14px;}
+  .closed-toggle input{width:18px; height:18px;}
+
+  /* settings */
+  .settbl{width:100%; border-collapse:collapse; margin-top:4px;}
+  .settbl th,.settbl td{padding:7px 4px; text-align:center; border-bottom:1px solid var(--line); font-size:13px;}
+  .settbl th{color:var(--sub); font-weight:600;}
+  .settbl td:first-child,.settbl th:first-child{text-align:left; font-weight:600;}
+  .settbl input{width:54px; height:34px; text-align:center; border:1px solid var(--line); border-radius:8px; font-size:14px;}
+  .hint{font-size:12px; color:var(--sub); margin:10px 2px;}
+  .ov-note{font-size:12px; color:var(--warn); margin-top:6px;}
+  .export-row{display:flex; gap:8px; margin-top:14px;}
+  .export-row button{flex:1; padding:10px; font-size:13px; border-radius:9px; border:1px solid var(--line); background:#f8fafc; cursor:pointer;}
+</style>
+</head>
+<body>
+<header>
+  <h1>📅 予約管理</h1>
+  <button class="gear" onclick="openSettings()" title="設定">⚙️</button>
+</header>
+
+<div class="wrap">
+  <div class="legend">
+    <span><i class="dot" style="background:var(--okbg)"></i>空きあり</span>
+    <span><i class="dot" style="background:var(--warnbg)"></i>残りわずか</span>
+    <span><i class="dot" style="background:var(--fullbg)"></i>満員</span>
+    <span><i class="dot" style="background:var(--offbg)"></i>休診</span>
+    <span style="color:#94a3b8">数字＝予約/定員</span>
+  </div>
+  <div id="months"></div>
+</div>
+
+<!-- 日詳細シート -->
+<div class="overlay" id="dayOverlay" onclick="if(event.target===this)closeDay()">
+  <div class="sheet">
+    <h3 id="dayTitle">—</h3>
+    <div class="sub" id="dayDow">—</div>
+
+    <label class="closed-toggle">
+      <input type="checkbox" id="closedChk" onchange="toggleClosed()">
+      この日は休診（予約を受け付けない）
+    </label>
+
+    <div id="slotsArea"></div>
+
+    <div class="btns">
+      <button class="btn btn-ghost" onclick="closeDay()">閉じる</button>
+      <button class="btn btn-primary" onclick="saveDay()">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 設定シート -->
+<div class="overlay" id="setOverlay" onclick="if(event.target===this)closeSettings()">
+  <div class="sheet">
+    <h3>⚙️ 設定</h3>
+    <div class="sub">曜日ごとの標準定員（午前 / 午後）。日ごとに変えたい時は各日の画面で上書きできます。</div>
+    <table class="settbl">
+      <thead><tr><th>曜日</th><th>午前 定員</th><th>午後 定員</th></tr></thead>
+      <tbody id="setBody"></tbody>
+    </table>
+    <div class="hint">※ 定員 0 にするとその曜日は「休診（予約不可）」扱いになります。</div>
+    <div class="btns">
+      <button class="btn btn-ghost" onclick="closeSettings()">閉じる</button>
+      <button class="btn btn-primary" onclick="saveSettings()">保存</button>
+    </div>
+    <div class="export-row">
+      <button onclick="exportData()">📤 データ書き出し(JSON)</button>
+      <button onclick="document.getElementById('importFile').click()">📥 読み込み</button>
+    </div>
+    <input type="file" id="importFile" accept="application/json" style="display:none" onchange="importData(event)">
+    <div class="hint">別の端末へ移すときは書き出し→読み込みで共有できます（自動同期ではありません）。</div>
+  </div>
+</div>
+
+<script>
+/* ========= データ層 ========= */
+const LS = {
+  caps:'yoyaku.caps', resv:'yoyaku.resv', ov:'yoyaku.dayOverrides'
+};
+const DOW = ['日','月','火','水','木','金','土']; // getDay()順
+// 既定の定員（診療体制）: 月火金=終日 / 水土=午前のみ / 木=午後のみ / 日=休診
+function defaultCaps(){
+  return {
+    0:{am:0, pm:0},   // 日  休診
+    1:{am:10,pm:10},  // 月  終日
+    2:{am:10,pm:10},  // 火  終日
+    3:{am:10,pm:0},   // 水  午前のみ
+    4:{am:0, pm:10},  // 木  午後のみ
+    5:{am:10,pm:10},  // 金  終日
+    6:{am:8, pm:0}    // 土  午前のみ
+  };
+}
+function load(key, fallback){
+  try{ const v=JSON.parse(localStorage.getItem(key)); return v??fallback; }catch(e){ return fallback; }
+}
+function save(key,val){ localStorage.setItem(key, JSON.stringify(val)); }
+
+let caps = load(LS.caps, defaultCaps());
+let resv = load(LS.resv, {});      // { "2026-06-14": {am:5, pm:3} }
+let overrides = load(LS.ov, {});   // { "2026-06-14": {am:?,pm:?,closed:bool} }
+
+/* ========= 日付ユーティリティ ========= */
+function ymd(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function todayYmd(){ return ymd(new Date()); }
+
+// その日の定員（上書き優先 → 曜日標準）
+function capacityFor(dateStr, dow){
+  const ov = overrides[dateStr];
+  if(ov && ov.closed) return {am:0, pm:0, closed:true};
+  const base = caps[dow] || {am:0,pm:0};
+  return {
+    am: (ov && ov.am!=null) ? ov.am : base.am,
+    pm: (ov && ov.pm!=null) ? ov.pm : base.pm,
+    closed:false
+  };
+}
+function reservedFor(dateStr){
+  const r = resv[dateStr] || {};
+  return { am: r.am||0, pm: r.pm||0 };
+}
+
+/* ========= カレンダー描画 ========= */
+function slotClass(reserved, cap){
+  if(cap<=0) return 's-off';
+  const left = cap - reserved;
+  if(left<=0) return 's-full';
+  if(left<=Math.max(1, Math.ceil(cap*0.2))) return 's-warn';
+  return 's-ok';
+}
+function slotMarkup(label, reserved, cap){
+  if(cap<=0) return `<div class="slot s-off"><span>${label}</span><span>休</span></div>`;
+  return `<div class="slot ${slotClass(reserved,cap)}"><span>${label}</span><b>${reserved}/${cap}</b></div>`;
+}
+
+function renderMonths(){
+  const host = document.getElementById('months');
+  host.innerHTML='';
+  const now = new Date();
+  const startMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const today = todayYmd();
+  // 本日を起点に「今日〜3ヶ月先」までをカバーする月数を算出（月初固定でなく常に今日基準）
+  const endDate = new Date(now.getFullYear(), now.getMonth()+3, now.getDate());
+  const monthCount = (endDate.getFullYear()-startMonth.getFullYear())*12
+                   + (endDate.getMonth()-startMonth.getMonth()) + 1;
+
+  for(let m=0;m<monthCount;m++){
+    const first = new Date(startMonth.getFullYear(), startMonth.getMonth()+m, 1);
+    const y=first.getFullYear(), mon=first.getMonth();
+    const daysInMonth = new Date(y, mon+1, 0).getDate();
+    const lead = first.getDay();
+
+    // 月集計
+    let monAm=0, monPm=0, capAm=0, capPm=0;
+    for(let d=1; d<=daysInMonth; d++){
+      const ds = y+'-'+String(mon+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+      const dow = new Date(y,mon,d).getDay();
+      const c = capacityFor(ds,dow), r = reservedFor(ds);
+      monAm+=r.am; monPm+=r.pm; capAm+=c.am; capPm+=c.pm;
+    }
+
+    const card=document.createElement('div'); card.className='month';
+    let html=`<h2>${y}年 ${mon+1}月 <small>予約計 ${monAm+monPm}人（午前${monAm}/午後${monPm}）</small></h2><div class="grid">`;
+    DOW.forEach((w,i)=>{ html+=`<div class="dow ${i===0?'sun':i===6?'sat':''}">${w}</div>`; });
+    for(let i=0;i<lead;i++) html+=`<div class="cell empty"></div>`;
+    for(let d=1; d<=daysInMonth; d++){
+      const ds = y+'-'+String(mon+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+      const dow = new Date(y,mon,d).getDay();
+      const c = capacityFor(ds,dow), r = reservedFor(ds);
+      const cls = [ 'cell', dow===0?'sun':dow===6?'sat':'', ds===today?'today':'', ds<today?'past':'' ].join(' ');
+      html+=`<div class="${cls}" onclick="openDay('${ds}')">`+
+            `<span class="dnum">${d}</span>`+
+            slotMarkup('前',r.am,c.am)+ slotMarkup('後',r.pm,c.pm)+
+            `</div>`;
+    }
+    html+='</div>';
+    card.innerHTML=html;
+    host.appendChild(card);
+  }
+}
+
+/* ========= 日詳細 ========= */
+let curDay=null;
+function openDay(ds){
+  curDay=ds;
+  const dt = new Date(ds+'T00:00:00');
+  const dow = dt.getDay();
+  document.getElementById('dayTitle').textContent =
+    `${dt.getFullYear()}年${dt.getMonth()+1}月${dt.getDate()}日`;
+  document.getElementById('dayDow').textContent = `（${DOW[dow]}曜日）`;
+
+  const ov = overrides[ds] || {};
+  document.getElementById('closedChk').checked = !!ov.closed;
+
+  const c = capacityFor(ds,dow), r = reservedFor(ds);
+  // 入力中の一時値
+  buildSlots(r, c, !!ov.closed);
+  document.getElementById('dayOverlay').classList.add('show');
+}
+function buildSlots(r, c, closed){
+  const area=document.getElementById('slotsArea');
+  area.style.display = closed ? 'none':'block';
+  area.innerHTML = `
+    ${slotEditor('午前','am', r.am, c.am)}
+    ${slotEditor('午後','pm', r.pm, c.pm)}
+  `;
+  updateAvail('am'); updateAvail('pm');
+}
+function slotEditor(label, key, reserved, cap){
+  return `<div class="slotbox">
+    <h4>${label}</h4>
+    <div class="row">
+      <label>予約人数</label>
+      <div class="stepper">
+        <button onclick="step('${key}',-1)">−</button>
+        <input id="res_${key}" type="number" min="0" value="${reserved}" inputmode="numeric" onchange="updateAvail('${key}')">
+        <button onclick="step('${key}',1)">＋</button>
+      </div>
+    </div>
+    <div class="row">
+      <label>定員（この日）</label>
+      <div class="stepper">
+        <button onclick="step('cap_${key}',-1)">−</button>
+        <input id="cap_${key}" type="number" min="0" value="${cap}" inputmode="numeric" onchange="updateAvail('${key}')">
+        <button onclick="step('cap_${key}',1)">＋</button>
+      </div>
+    </div>
+    <div class="avail" id="avail_${key}"></div>
+  </div>`;
+}
+function step(id, delta){
+  const el=document.getElementById('res_'+id) || document.getElementById(id);
+  // id may be 'am'/'pm' (res) or 'cap_am'/'cap_pm'
+  let target;
+  if(id==='am'||id==='pm') target=document.getElementById('res_'+id);
+  else target=document.getElementById(id);
+  let v=parseInt(target.value||'0',10)+delta;
+  if(v<0)v=0; target.value=v;
+  const key = id.replace('cap_','').replace('res_','');
+  updateAvail((id==='am'||id==='pm')?id:key);
+}
+function updateAvail(key){
+  const res=parseInt(document.getElementById('res_'+key).value||'0',10);
+  const cap=parseInt(document.getElementById('cap_'+key).value||'0',10);
+  const el=document.getElementById('avail_'+key);
+  if(cap<=0){ el.textContent='休診（定員0）'; el.style.color='var(--off)'; return; }
+  const left=cap-res;
+  if(left<=0){ el.textContent='満員（空き 0）'; el.style.color='var(--full)'; }
+  else { el.textContent=`空き ${left}人`; el.style.color = left<=Math.max(1,Math.ceil(cap*0.2))?'var(--warn)':'var(--ok)'; }
+}
+function toggleClosed(){
+  const closed=document.getElementById('closedChk').checked;
+  const area=document.getElementById('slotsArea');
+  area.style.display = closed ? 'none':'block';
+}
+function saveDay(){
+  const ds=curDay;
+  const closed=document.getElementById('closedChk').checked;
+  const dow=new Date(ds+'T00:00:00').getDay();
+  const base=caps[dow]||{am:0,pm:0};
+
+  if(closed){
+    overrides[ds] = {closed:true};
+  } else {
+    const ra=parseInt(document.getElementById('res_am').value||'0',10);
+    const rp=parseInt(document.getElementById('res_pm').value||'0',10);
+    const ca=parseInt(document.getElementById('cap_am').value||'0',10);
+    const cp=parseInt(document.getElementById('cap_pm').value||'0',10);
+    // 予約
+    if(ra||rp) resv[ds]={am:ra,pm:rp}; else delete resv[ds];
+    // 定員: 曜日標準と違う場合のみ上書き保存
+    const ov={};
+    if(ca!==base.am) ov.am=ca;
+    if(cp!==base.pm) ov.pm=cp;
+    if(Object.keys(ov).length) overrides[ds]=ov; else delete overrides[ds];
+  }
+  save(LS.resv,resv); save(LS.ov,overrides);
+  closeDay(); renderMonths();
+}
+function closeDay(){ document.getElementById('dayOverlay').classList.remove('show'); curDay=null; }
+
+/* ========= 設定 ========= */
+function openSettings(){
+  const body=document.getElementById('setBody');
+  body.innerHTML='';
+  for(let i=1;i<=6;i++) addSetRow(body,i);
+  addSetRow(body,0); // 日曜は最後
+  document.getElementById('setOverlay').classList.add('show');
+}
+function addSetRow(body,i){
+  const c=caps[i]||{am:0,pm:0};
+  const tr=document.createElement('tr');
+  tr.innerHTML=`<td>${DOW[i]}曜</td>
+    <td><input type="number" min="0" id="set_am_${i}" value="${c.am}" inputmode="numeric"></td>
+    <td><input type="number" min="0" id="set_pm_${i}" value="${c.pm}" inputmode="numeric"></td>`;
+  body.appendChild(tr);
+}
+function saveSettings(){
+  for(let i=0;i<=6;i++){
+    caps[i]={
+      am:Math.max(0,parseInt(document.getElementById('set_am_'+i).value||'0',10)),
+      pm:Math.max(0,parseInt(document.getElementById('set_pm_'+i).value||'0',10))
+    };
+  }
+  save(LS.caps,caps);
+  closeSettings(); renderMonths();
+}
+function closeSettings(){ document.getElementById('setOverlay').classList.remove('show'); }
+
+/* ========= 書き出し / 読み込み ========= */
+function exportData(){
+  const data={caps,resv,overrides,_exportedAt:new Date().toISOString()};
+  const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='予約管理_'+todayYmd()+'.json';
+  a.click();
+}
+function importData(ev){
+  const f=ev.target.files[0]; if(!f) return;
+  const rd=new FileReader();
+  rd.onload=()=>{
+    try{
+      const d=JSON.parse(rd.result);
+      if(d.caps) caps=d.caps;
+      if(d.resv) resv=d.resv;
+      if(d.overrides) overrides=d.overrides;
+      save(LS.caps,caps); save(LS.resv,resv); save(LS.ov,overrides);
+      renderMonths(); closeSettings();
+      alert('読み込みました。');
+    }catch(e){ alert('読み込みに失敗しました：'+e.message); }
+  };
+  rd.readAsText(f);
+  ev.target.value='';
+}
+
+/* ========= 起動 ========= */
+renderMonths();
+</script>
+</body>
+</html>
